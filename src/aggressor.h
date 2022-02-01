@@ -9,6 +9,8 @@
 #include <ffbase/string.h>
 #include <ffbase/vector.h>
 
+#define AGG_VER  "v0.2"
+
 struct conn;
 struct conf {
 	ffsockaddr addr;
@@ -20,6 +22,7 @@ struct conf {
 	uint events_num;
 	uint rbuf_size;
 	uint debug;
+	uint cpumask; // 0:disable
 	ffstr method;
 	ffvec paths; // ffstr[]
 	ffvec headers;
@@ -41,6 +44,7 @@ struct worker {
 	ffkq kq;
 	ffthread t;
 	ffkq_event *kevents;
+	int icpu; // -1:disable affinity
 	uint worker_stop;
 	uint next_req;
 	ffkq_postevent post;

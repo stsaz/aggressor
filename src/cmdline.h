@@ -21,6 +21,13 @@ static int cmd_header(ffcmdarg_scheme *as, struct conf *c, ffstr *s)
 	return 0;
 }
 
+static int cmd_cpuaffinity(ffcmdarg_scheme *as, struct conf *c, ffstr *val)
+{
+	if (!ffstr_toint(val, &c->cpumask, FFS_INT32 | FFS_INTHEX))
+		return FFCMDARG_ERROR;
+	return 0;
+}
+
 static int cmd_usage()
 {
 	static const char usage[] =
@@ -31,6 +38,7 @@ static int cmd_usage()
 " -n, --number N       Total number of requests (def: unlimited)\n"
 " -c, --concurrency N  Concurrent connectons (def: 100)\n"
 " -t, --threads N      Worker threads (def: CPU#)\n"
+" -a, --affinity N     CPU affinity bitmask, hex value (e.g. 15 for CPUs 0,2,4)\n"
 " -k, --keepalive N    Max. keep-alive requests per connection (def: 64)\n"
 " -m, --method STR     HTTP request method (def: GET)\n"
 " -H, --header STR     Add HTTP request header\n"
@@ -46,6 +54,7 @@ static const ffcmdarg_arg cmd_args[] = {
 	{ 'n', "number",	FFCMDARG_TINT32, FF_OFF(struct conf, total_reqs) },
 	{ 'c', "concurrency",	FFCMDARG_TINT32, FF_OFF(struct conf, connections_n) },
 	{ 't', "threads",	FFCMDARG_TINT32, FF_OFF(struct conf, threads) },
+	{ 'a', "affinity",	FFCMDARG_TSTR, (ffsize)cmd_cpuaffinity },
 	{ 'k', "keepalive",	FFCMDARG_TINT32, FF_OFF(struct conf, keepalive_reqs) },
 	{ 'm', "method",	FFCMDARG_TSTR | FFCMDARG_FNOTEMPTY, FF_OFF(struct conf, method) },
 	{ 'H', "header",	FFCMDARG_TSTR | FFCMDARG_FMULTI | FFCMDARG_FNOTEMPTY, (ffsize)cmd_header },
@@ -132,6 +141,8 @@ static int cmd_finalize(struct conf *c)
 		ffsysconf sc;
 		ffsysconf_init(&sc);
 		c->threads = ffsysconf_get(&sc, FFSYSCONF_NPROCESSORS_ONLN);
+		if (c->cpumask == 0)
+			c->cpumask = (uint)-1;
 	}
 
 	c->fd_limit = c->connections_n * 2;

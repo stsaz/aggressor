@@ -21,7 +21,7 @@ ffuint64 time_usec()
 	return t.sec*1000000 + t.nsec/1000;
 }
 
-void stats()
+static void stats()
 {
 	struct agg_stat s = {};
 	struct worker *w;
@@ -39,25 +39,28 @@ void stats()
 	s.connect_latency_usec /= agg_conf->workers.len;
 	s.resp_latency_usec /= agg_conf->workers.len;
 
-	ffuint64 t_ms = time_usec()/1000;
-	t_ms -= agg_conf->start_time_usec/1000;
+	ffuint64 t_ms = (time_usec() - agg_conf->start_time_usec) / 1000;
 	ffstdout_fmt(
-		"successful connections: %U\n"
-		"failed connections:     %U\n"
-		"successful responses:   %U\n"
-		"failed responses:       %U\n"
-		"time:                   %Umsec\n"
-		"responses/sec:          %Urps\n"
-		"total bytes sent:       %U\n"
-		"total bytes received:   %U\n"
-		"connection latency:     %Uusec\n"
-		"response latency:       %Uusec\n"
+		"time:                   %20Umsec\n"
+		"successful connections: %20U\n"
+		"failed connections:     %20U\n"
+		"successful responses:   %20U\n"
+		"failed responses:       %20U\n"
+		"responses/sec:          %20Urps\n"
+		"total sent:             %20UB\n"
+		"total received:         %20UB\n"
+		"send/sec:               %20Ubps\n"
+		"receive/sec:            %20Ubps\n"
+		"connection latency:     %20Uusec\n"
+		"response latency:       %20Uusec\n"
 		"\n"
+		, t_ms
 		, s.connections_ok, s.connections_failed
 		, s.resp_ok, s.resp_err
-		, t_ms
 		, (t_ms != 0) ? (s.resp_ok + s.resp_err) * 1000 / t_ms : 0ULL
 		, s.total_sent, s.total_recv
+		, (t_ms != 0) ? s.total_sent*8 / t_ms : 0ULL
+		, (t_ms != 0) ? s.total_recv*8 / t_ms : 0ULL
 		, s.connect_latency_usec
 		, s.resp_latency_usec
 		);
@@ -66,6 +69,15 @@ void stats()
 static int FFTHREAD_PROCCALL worker_func(void *param)
 {
 	struct worker *w = param;
+
+	if (w->icpu >= 0) {
+		cpu_set_t cpuset;
+		CPU_ZERO(&cpuset);
+		CPU_SET(w->icpu, &cpuset);
+		if (0 == pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset))
+			agg_dbg("CPU affinity: %u", w->icpu);
+	}
+
 	w->kq = ffkq_create();
 	if (w->kq == FFKQ_NULL) {
 		agg_syserr("kq create");
@@ -123,15 +135,27 @@ static void run()
 
 	ffvec_allocT(&agg_conf->workers, agg_conf->threads, struct worker);
 	ffmem_zero(agg_conf->workers.ptr, agg_conf->threads * sizeof(struct worker));
-	agg_conf->workers.len = agg_conf->threads - 1;
+	agg_conf->workers.len = agg_conf->threads;
 	struct worker *w;
+	uint mask = agg_conf->cpumask;
 	FFSLICE_WALK(&agg_conf->workers, w) {
+
+		w->icpu = -1;
+		uint n = ffbit_rfind32(mask);
+		if (n != 0) {
+			n--;
+			ffbit_reset32(&mask, n);
+			w->icpu = n;
+		}
+
+		if (w == agg_conf->workers.ptr)
+			continue;
+
 		w->t = ffthread_create(worker_func, w, 0);
 		assert(w->t != FFTHREAD_NULL);
 	}
 
-	w = ffvec_pushT(&agg_conf->workers, struct worker);
-	w->t = FFTHREAD_NULL;
+	w = (void*)agg_conf->workers.ptr;
 	worker_func(w);
 
 	FFSLICE_WALK(&agg_conf->workers, w) {
@@ -156,6 +180,9 @@ static void sig_handler(struct ffsig_info *i)
 
 int main(int argc, char **argv)
 {
+	static char appname[] = "aggressor " AGG_VER "\n";
+	ffstdout_write(appname, FFS_LEN(appname));
+
 	agg_conf = ffmem_new(struct conf);
 	if (0 != cmd_process(agg_conf, argc, (const char **)argv))
 		goto end;
@@ -166,6 +193,8 @@ int main(int argc, char **argv)
 		rl.rlim_max = agg_conf->fd_limit;
 		setrlimit(RLIMIT_NOFILE, &rl);
 	}
+
+	ffsock_init(FFSOCK_INIT_SIGPIPE);
 
 	ffuint sigs = SIGINT;
 	ffsig_subscribe(sig_handler, &sigs, 1);
