@@ -6,7 +6,7 @@ FFOS_DIR := ../ffos
 
 include $(FFBASE_DIR)/test/makeconf
 
-CFLAGS := -std=gnu99 -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare
+CFLAGS := -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare
 CFLAGS += -I$(AGG_DIR)/src -I$(FFOS_DIR) -I$(FFBASE_DIR)
 ifeq "$(OPT)" "0"
 	CFLAGS += -DFF_DEBUG -O0 -g

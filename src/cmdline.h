@@ -145,7 +145,8 @@ static int cmd_finalize(struct conf *c)
 			c->cpumask = (uint)-1;
 	}
 
-	c->fd_limit = c->connections_n * 2;
+	if (c->connections_n > 1024)
+		c->fd_limit = c->connections_n * 2;
 	return 0;
 }
 

@@ -194,7 +194,8 @@ static int conn_resp_parse(struct conn *c)
 	}
 
 	if (resp.len > c->cont_len) {
-		agg_err("received data is larger than Content-Length");
+		agg_err("received data %L is larger than Content-Length %U"
+			, resp.len, c->cont_len);
 		return -1;
 	}
 	c->cont_len -= resp.len;
