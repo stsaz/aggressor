@@ -101,8 +101,8 @@ static int cmd_finalize(struct conf *c)
 
 	ffstr *it;
 	FFSLICE_WALK(&c->paths, it) {
-		struct ffhttpurl_parts u = {};
-		ffhttpurl_split(&u, *it);
+		struct httpurl_parts u = {};
+		httpurl_split(&u, *it);
 
 		uint port = 80;
 		if (u.port.len != 0) {
@@ -131,7 +131,7 @@ static int cmd_finalize(struct conf *c)
 		ffmem_zero_obj(ps);
 		ffsize cap = 4096;
 		ffstr_alloc(ps, cap);
-		ps->len = ffhttp_req_write(ps->ptr, cap, agg_conf->method, u.path, 0);
+		ps->len = http_req_write(ps->ptr, cap, agg_conf->method, u.path, 0);
 		ffstr_growfmt(ps, &cap, "Host: %S:%u\r\n", &u.host, port);
 		ffstr_growadd2(ps, &cap, &agg_conf->headers);
 		ffstr_growaddz(ps, &cap, "\r\n");

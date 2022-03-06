@@ -155,7 +155,7 @@ static int conn_resp_parse(struct conn *c)
 {
 	ffstr resp = FFSTR_INITN(c->buf, c->bufn), proto, msg;
 	uint code;
-	int r = ffhttp_resp_parse(resp, &proto, &code, &msg);
+	int r = http_resp_parse(resp, &proto, &code, &msg);
 	if (r < 0) {
 		agg_err("bad HTTP response line");
 		return -1;
@@ -170,20 +170,19 @@ static int conn_resp_parse(struct conn *c)
 		c->w->stats.resp_latency_usec = (c->w->stats.resp_latency_usec + t - c->start_time_usec) / 2;
 	}
 
+	ffstr name = {}, val = {};
 	for (;;) {
-		ffstr name, val;
-		r = ffhttp_hdr_parse(resp, &name, &val);
-		if (r < 0) {
-			if (ffstr_matchz(&resp, "\r\n")) {
-				ffstr_shift(&resp, 2);
-				break;
-			}
+		r = http_hdr_parse(resp, &name, &val);
+		if (r == 0) {
+			return 1;
+		} else if (r < 0) {
 			agg_err("bad HTTP header");
 			return -1;
-		} else if (r == 0) {
-			return 1;
 		}
 		ffstr_shift(&resp, r);
+
+		if (r <= 2)
+			break;
 
 		if (ffstr_ieqz(&name, "Content-Length")) {
 			if (!ffstr_to_uint64(&val, &c->cont_len)) {
