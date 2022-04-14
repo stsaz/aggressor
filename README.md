@@ -5,7 +5,7 @@ Easily maxes out nginx (static files or 404 errors) on the same hardware (`~140k
 
 Features and limitations:
 
-* Runs on Linux (epoll)
+* Runs on Linux and FreeBSD (uses epoll and kqueue)
 * Multi-threaded, uses all CPUs by default
 * Keep-alive
 * Doesn't support chunked response

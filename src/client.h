@@ -2,7 +2,7 @@
 2022, Simon Zolin */
 
 #include <util/http1.h>
-#include <FFOS/atomic.h>
+#include <ffbase/atomic.h>
 
 static void conn_connect(struct conn *c);
 static void conn_req_send(struct conn *c);
@@ -50,31 +50,19 @@ static void conn_connect(struct conn *c)
 {
 	if (c->whandler == NULL) {
 		c->start_time_usec = time_usec();
-		if (ffsock_connect(c->sk, &agg_conf->addr) < 0) {
-			if (fferr_last() != EINPROGRESS) {
-				agg_syserr("sock connect");
-				c->w->stats.connections_failed++;
-				conn_end(c);
-				return;
-			}
-			conn_attach(c);
-			c->whandler = conn_connect;
-			return;
-		}
 	} else {
 		c->whandler = NULL;
-		int err = 0;
-		if (c->kev_flags & EPOLLERR) {
-			socklen_t len = sizeof(int);
-			if (0 != getsockopt(c->sk, SOL_SOCKET, SO_ERROR, &err, &len))
-				err = errno;
-		}
-		if (err != 0) {
-			agg_syserr("async connect");
+	}
+	if (0 != ffsock_connect_async(c->sk, &agg_conf->addr, &c->kqtask)) {
+		if (fferr_last() != FFSOCK_EINPROGRESS) {
+			agg_syserr("sock connect");
 			c->w->stats.connections_failed++;
 			conn_end(c);
 			return;
 		}
+		conn_attach(c);
+		c->whandler = conn_connect;
+		return;
 	}
 
 	c->w->stats.connections_ok++;

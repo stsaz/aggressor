@@ -66,12 +66,18 @@ static void stats()
 		);
 }
 
+#ifdef FF_LINUX
+typedef cpu_set_t _cpuset;
+#else
+typedef cpuset_t _cpuset;
+#endif
+
 static int FFTHREAD_PROCCALL worker_func(void *param)
 {
 	struct worker *w = param;
 
 	if (w->icpu >= 0) {
-		cpu_set_t cpuset;
+		_cpuset cpuset;
 		CPU_ZERO(&cpuset);
 		CPU_SET(w->icpu, &cpuset);
 		if (0 == pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset))
@@ -110,7 +116,7 @@ static int FFTHREAD_PROCCALL worker_func(void *param)
 			if (((ffsize)d & 1) != c->side)
 				continue;
 
-			c->kev_flags = ev->events;
+			ffkq_task_event_assign(&c->kqtask, ev);
 			int flags = ffkq_event_flags(ev);
 			if ((flags & FFKQ_READ) && c->rhandler != NULL)
 				c->rhandler(c);
@@ -194,7 +200,7 @@ int main(int argc, char **argv)
 		setrlimit(RLIMIT_NOFILE, &rl);
 	}
 
-	ffsock_init(FFSOCK_INIT_SIGPIPE);
+	ffsock_init(FFSOCK_INIT_SIGPIPE | FFSOCK_INIT_WSA | FFSOCK_INIT_WSAFUNCS);
 
 	ffuint sigs = SIGINT;
 	ffsig_subscribe(sig_handler, &sigs, 1);

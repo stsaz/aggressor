@@ -59,7 +59,7 @@ typedef void (*kev_handler)(struct conn *c);
 struct conn {
 	kev_handler rhandler, whandler;
 	uint side;
-	uint kev_flags;
+	ffkq_task kqtask;
 
 	ffsock sk;
 	struct worker *w;

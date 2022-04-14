@@ -6,13 +6,14 @@ FFOS_DIR := ../ffos
 
 include $(FFBASE_DIR)/test/makeconf
 
-CFLAGS := -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare
+CFLAGS := -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -pthread
 CFLAGS += -I$(AGG_DIR)/src -I$(FFOS_DIR) -I$(FFBASE_DIR)
+LINKFLAGS := -pthread
 ifeq "$(OPT)" "0"
 	CFLAGS += -DFF_DEBUG -O0 -g
 else
 	CFLAGS += -O3 -fno-strict-aliasing
-	LINKFLAGS := -s
+	LINKFLAGS += -s
 endif
 ifneq "$(SSE42)" "0"
 	CFLAGS += -msse4.2
