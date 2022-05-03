@@ -3,6 +3,7 @@
 
 #include <util/cmdarg-scheme.h>
 #include <util/ipaddr.h>
+#include <util/http1.h>
 #include <FFOS/sysconf.h>
 
 #define CONF_RDONE  100

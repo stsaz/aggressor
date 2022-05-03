@@ -6,10 +6,13 @@
 #include <FFOS/thread.h>
 #include <FFOS/std.h>
 #include <FFOS/perf.h>
+#include <FFOS/error.h>
 #include <ffbase/string.h>
 #include <ffbase/vector.h>
 
-#define AGG_VER  "v0.2"
+#define AGG_VER  "0.3"
+
+typedef unsigned int uint;
 
 struct conn;
 struct conf {
@@ -30,6 +33,7 @@ struct conf {
 
 	ffvec workers;
 	ffuint64 start_time_usec;
+	uint nreqs;
 };
 extern struct conf *agg_conf;
 
@@ -52,14 +56,12 @@ struct worker {
 
 	struct agg_stat stats;
 };
-void agg_stopall();
-ffuint64 time_usec();
 
 typedef void (*kev_handler)(struct conn *c);
 struct conn {
 	kev_handler rhandler, whandler;
 	uint side;
-	ffkq_task kqtask;
+	ffkq_task kqtask, kqtask2;
 
 	ffsock sk;
 	struct worker *w;
@@ -71,7 +73,6 @@ struct conn {
 	ffuint64 start_time_usec;
 	ffuint64 cont_len;
 	unsigned resp_line_ok :1;
-	unsigned last :1;
 	unsigned resp_err :1;
 	uint bufn;
 	char buf[0];
@@ -86,3 +87,15 @@ do { \
 	ffstderr_fmt("error: " fmt "\n", ##__VA_ARGS__)
 #define agg_syserr(fmt, ...) \
 	ffstderr_fmt("error: " fmt ": %s\n", ##__VA_ARGS__, fferr_strptr(fferr_last()))
+
+
+/**
+closed: whether connection is closed
+Return 1: all done */
+int agg_conn_fin(struct conn *c, int closed);
+
+ffuint64 time_usec();
+
+
+void conn_start(struct conn *c, struct worker *w);
+void conn_close(struct conn *c);

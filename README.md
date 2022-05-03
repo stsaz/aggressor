@@ -5,7 +5,7 @@ Easily maxes out nginx (static files or 404 errors) on the same hardware (`~140k
 
 Features and limitations:
 
-* Runs on Linux and FreeBSD (uses epoll and kqueue)
+* Runs on Linux, FreeBSD, Windows (uses epoll, kqueue, IOCP)
 * Multi-threaded, uses all CPUs by default
 * Keep-alive
 * Doesn't support chunked response
@@ -41,3 +41,8 @@ Example output:
 	total bytes received:   757293050
 	connection latency:     23usec
 	response latency:       648usec
+
+
+## Homepage
+
+https://github.com/stsaz/aggressor

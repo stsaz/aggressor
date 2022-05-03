@@ -2,14 +2,14 @@
 2022, Simon Zolin */
 
 #include <aggressor.h>
-#include <client.h>
 #include <cmdline.h>
 #include <util/ipaddr.h>
-#include <util/http1.h>
 #include <FFOS/signal.h>
 #include <FFOS/ffos-extern.h>
 #include <ffbase/atomic.h>
+#ifdef FF_UNIX
 #include <sys/resource.h>
+#endif
 #include <assert.h>
 
 int _ffcpu_features;
@@ -68,7 +68,7 @@ static void stats()
 
 #ifdef FF_LINUX
 typedef cpu_set_t _cpuset;
-#else
+#elif defined FF_BSD
 typedef cpuset_t _cpuset;
 #endif
 
@@ -76,6 +76,9 @@ static int FFTHREAD_PROCCALL worker_func(void *param)
 {
 	struct worker *w = param;
 
+	agg_dbg("worker thread start");
+
+#ifdef FF_UNIX
 	if (w->icpu >= 0) {
 		_cpuset cpuset;
 		CPU_ZERO(&cpuset);
@@ -83,9 +86,9 @@ static int FFTHREAD_PROCCALL worker_func(void *param)
 		if (0 == pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset))
 			agg_dbg("CPU affinity: %u", w->icpu);
 	}
+#endif
 
-	w->kq = ffkq_create();
-	if (w->kq == FFKQ_NULL) {
+	if (FFKQ_NULL == (w->kq = ffkq_create())) {
 		agg_syserr("kq create");
 		return -1;
 	}
@@ -118,6 +121,14 @@ static int FFTHREAD_PROCCALL worker_func(void *param)
 
 			ffkq_task_event_assign(&c->kqtask, ev);
 			int flags = ffkq_event_flags(ev);
+
+#ifdef FF_WIN
+			if (ev->lpOverlapped == &c->kqtask.overlapped)
+				flags = FFKQ_READWRITE;
+			else if (ev->lpOverlapped == &c->kqtask2.overlapped)
+				flags = FFKQ_WRITE;
+#endif
+
 			if ((flags & FFKQ_READ) && c->rhandler != NULL)
 				c->rhandler(c);
 			if ((flags & FFKQ_WRITE) && c->whandler != NULL)
@@ -130,8 +141,16 @@ static int FFTHREAD_PROCCALL worker_func(void *param)
 		}
 	}
 
+	ptr = (void*)w->connections;
+	for (uint i = 0;  i != n;  i++) {
+		struct conn *c = (void*)ptr;
+		ptr += sizeof(struct conn) + agg_conf->rbuf_size;
+		conn_close(c);
+	}
+
 	ffmem_free(w->kevents);
 	ffkq_close(w->kq);
+	agg_dbg("worker thread exit");
 	return 0;
 }
 
@@ -179,6 +198,19 @@ void agg_stopall()
 	}
 }
 
+int agg_conn_fin(struct conn *c, int closed)
+{
+	uint n = ffint_fetch_add(&agg_conf->nreqs, 1);
+	if (n+1 >= agg_conf->total_reqs) {
+		agg_stopall();
+		return 1;
+	}
+
+	if (closed)
+		conn_start(c, c->w);
+	return 0;
+}
+
 static void sig_handler(struct ffsig_info *i)
 {
 	agg_stopall();
@@ -186,23 +218,26 @@ static void sig_handler(struct ffsig_info *i)
 
 int main(int argc, char **argv)
 {
-	static char appname[] = "aggressor " AGG_VER "\n";
+	static const char appname[] = "aggressor v" AGG_VER "\n";
 	ffstdout_write(appname, FFS_LEN(appname));
 
 	agg_conf = ffmem_new(struct conf);
 	if (0 != cmd_process(agg_conf, argc, (const char **)argv))
 		goto end;
 
+#ifdef FF_UNIX
 	if (agg_conf->fd_limit != 0) {
 		struct rlimit rl;
 		rl.rlim_cur = agg_conf->fd_limit;
 		rl.rlim_max = agg_conf->fd_limit;
 		setrlimit(RLIMIT_NOFILE, &rl);
 	}
+#endif
 
-	ffsock_init(FFSOCK_INIT_SIGPIPE | FFSOCK_INIT_WSA | FFSOCK_INIT_WSAFUNCS);
+	if (0 != ffsock_init(FFSOCK_INIT_SIGPIPE | FFSOCK_INIT_WSA | FFSOCK_INIT_WSAFUNCS))
+		goto end;
 
-	ffuint sigs = SIGINT;
+	ffuint sigs = FFSIG_INT;
 	ffsig_subscribe(sig_handler, &sigs, 1);
 
 	run();
